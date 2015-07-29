@@ -1,0 +1,108 @@
+trigger LeadToOpportunity on Lead (after insert, after update) {
+        
+    for(Lead ld : Trigger.new) {
+        
+        if(String.isNotBlank(ld.AccountId__c) && String.isBlank(ld.Company)) {
+            List <Account> aList = [SELECT Id, Name FROM Account where Id =: ld.AccountId__c];
+            
+            for (Account ac : aList)  {                
+                ld.Company = ac.Name;
+            }            
+        }
+        
+        if (String.isNotBlank(ld.Tutor_RecordID__c) && !ld.IsConverted) {
+            doConvert(ld);            
+        }        
+		
+    }
+    
+    
+    
+    /**
+     * Convert Lead to Opportunity
+     * @param <Lead>
+     **/
+	private Database.LeadConvertResult doConvert(Lead ld) {
+		
+        Account ac = createAccount(ld);
+        Contact c = createContact(ld, ac);
+        
+        // if we have campaign information; add it to campaign member
+        if (String.isNotBlank(ld.Campaign__c)) {
+            
+            List <CampaignMember> cmList = [SELECT Id from CampaignMember WHERE LeadId =: ld.Id and CampaignId =: ld.Campaign__c and ContactId = : c.Id ];
+            if (cmList.isEmpty()) {
+             	CampaignMember cm = new CampaignMember();
+                cm.LeadId = ld.Id;
+                cm.CampaignId = ld.Campaign__c;
+                cm.ContactId = c.Id;
+				insert cm;                
+            }
+        }
+        
+        Database.LeadConvert lc = new database.LeadConvert();
+        lc.setLeadId(ld.Id);
+        lc.setOpportunityName(ld.FirstName + ' ' + ld.LastName);
+        lc.setAccountId(ac.Id);
+        lc.setContactId(c.Id);
+        
+        LeadStatus convertStatus = [SELECT Id, MasterLabel FROM LeadStatus WHERE IsConverted=true LIMIT 1];
+        lc.setConvertedStatus(convertStatus.MasterLabel);
+        Database.LeadConvertResult lcr = Database.convertLead(lc);
+        
+        return lcr;
+    }
+    
+    
+    
+    /**
+     * Create Account from lead
+     * @param <Lead>
+     **/
+    private Account createAccount(Lead ld) {        
+        Account a = new Account();
+        
+        List <Account> aList = [SELECT Id from Account WHERE Tutor_RecordID__c =: ld.Tutor_RecordID__c];
+        if (aList.size() == 1) {
+            for (Account ac : aList) {
+                a = ac;
+            }
+        } else if (aList.isEmpty()) {
+            a.Tutor_RecordID__c = ld.Tutor_RecordID__c;
+            a.Phone = ld.Phone;
+            a.Name = ld.FirstName + ' ' + ld.LastName;
+            a.ParentId = ld.AccountId__c;
+            insert a;            
+        }
+        return a;
+    }
+    
+    
+    
+    /**
+     * Create Contact from Lead and attached to account
+     * @param <Lead>
+     * @param <Account>
+     **/
+    private Contact createContact(Lead ld, Account ac) {
+        Contact c = new Contact();
+        
+        List <Contact> cList = [SELECT Id from Contact WHERE Email =: ld.Email];
+        if (cList.size() == 1) {
+            for (Contact nc : cList) {
+                c = nc;
+            }
+        } else if (cList.isEmpty()) {
+            c.AccountId = ac.Id;
+            c.NiceKey__c = ld.Tutor_RecordID__c;
+            c.FirstName = ld.FirstName;
+            c.LastName = ld.LastName;
+            c.Phone = ld.Phone;
+            c.Email = ld.Email;
+            c.Contact_Type__c = 'tutor';
+            insert c;
+        }
+        return c;          
+    }
+
+}
