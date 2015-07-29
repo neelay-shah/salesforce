@@ -5,15 +5,14 @@ trigger LeadToOpportunity on Lead (after insert, after update) {
         if(String.isNotBlank(ld.AccountId__c) && String.isBlank(ld.Company)) {
             List <Account> aList = [SELECT Id, Name FROM Account where Id =: ld.AccountId__c];
             
-            for (Account ac : aList)  {                
+            for (Account ac : aList)  {
                 ld.Company = ac.Name;
             }            
         }
         
-        if (String.isNotBlank(ld.Tutor_RecordID__c) && !ld.IsConverted) {
+        if (String.isNotBlank(ld.Tutor_RecordID__c) && ld.Lead_Type__c == 'tutor' && !ld.IsConverted) {
             doConvert(ld);            
-        }        
-		
+        }
     }
     
     
